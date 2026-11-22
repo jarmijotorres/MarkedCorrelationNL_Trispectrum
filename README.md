@@ -5,12 +5,17 @@
 The repository tracks source code, fixed configurations, and methodology
 documents. Generated run directories are ignored by Git; copy or archive
 results separately. The CMB environment used locally was Python 3.11 with
-the versions in [requirements-cmb.txt](requirements-cmb.txt). On a Linux
-login node, create an environment with a compatible Python 3.11, then run:
+the versions in [requirements-cmb.txt](requirements-cmb.txt). On an older
+Linux cluster, pip may try to compile those exact versions from source.
+Use the binary Conda packages in [environment-hpc.yml](environment-hpc.yml):
 
-    python -m venv .venv
-    .venv/bin/python -m pip install -r requirements-cmb.txt
-    .venv/bin/python -c "import camb, healpy, lenspyx, numpy, scipy"
+    conda env create -f environment-hpc.yml
+    conda activate marked-cmb
+    python -m pip install --no-deps lenspyx==2.0.52
+    python -c "import camb, healpy, lenspyx, numpy, scipy; print('ready')"
+
+The exact-pinned requirements file records the local software versions; it
+is not the recommended installer for a cluster with an older Linux runtime.
 
 The ensemble configuration is in
 [configs/cmb_marked_ensemble.json](configs/cmb_marked_ensemble.json). Its
@@ -18,7 +23,7 @@ default count is only a placeholder; choose the count when submitting.
 For a Slurm cluster, submit from the repository root after adapting time,
 memory, and account settings in [scripts/run_cmb_slurm.sh](scripts/run_cmb_slurm.sh):
 
-    sbatch --export=ALL,COUNT=20,PYTHON_BIN="$PWD/.venv/bin/python",OUTPUT_DIR="$SCRATCH/cmb_marked_ensemble" scripts/run_cmb_slurm.sh
+    sbatch --export=ALL,COUNT=20,PYTHON_BIN="$CONDA_PREFIX/bin/python",OUTPUT_DIR="$SCRATCH/cmb_marked_ensemble" scripts/run_cmb_slurm.sh
 
 If the job reaches its wall-time limit, resubmit with the same count and
 output directory; completed pairs are skipped. A larger count extends the

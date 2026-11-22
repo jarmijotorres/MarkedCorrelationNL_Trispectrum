@@ -1,0 +1,12 @@
+name: marked-cmb
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - scipy
+  - healpy
+  - camb=1.6.5
+  - ducc0
+  - matplotlib
+  - pip
