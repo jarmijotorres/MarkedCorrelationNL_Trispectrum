@@ -1,0 +1,7 @@
+# Versions used for the ten-sky pilot on Python 3.11.
+numpy==2.4.6
+scipy==1.15.2
+healpy==1.19.0
+lenspyx==2.0.52
+camb==1.6.5
+matplotlib==3.10.9
