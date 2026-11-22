@@ -207,6 +207,19 @@ and output directory to inspect progress; run action diagnose after completion.
 The notebook cell remains busy until the runner completes. Its own output is
 short; individual simulation logs are in output/pair_XX/run.log.
 
+For diagnostics in a notebook using this environment, no subprocess is
+needed. Add the repository to Python's module path if the notebook is in
+another directory, then call the analysis functions:
+
+    import sys
+    sys.path.insert(0, str(repo))
+    from cmb.marked_ensemble_pilot import load_config, diagnose
+    from cmb.analyze_marked_ensemble import analyze
+    config = load_config((repo / "configs/cmb_marked_ensemble.json").resolve(),
+                         count=100, output_dir=output)
+    records = diagnose(config)
+    print(analyze(output))
+
 The benchmark creates paired lensed and unlensed maps from the same Gaussian
 primary, and two phase controls for each map. It computes sign-paired marked
 and connected-four-point bandpowers using cached spherical-harmonic transforms;

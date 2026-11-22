@@ -7,20 +7,16 @@ import argparse
 import json
 from pathlib import Path
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 
-from cmb.benchmark_cmb_ensemble import bin_spectrum
+from cmb.core import bin_spectrum
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("folder", nargs="?", type=Path,
-                        default=Path("run_cmb_marked_10_2048"))
-    args = parser.parse_args()
-    folder = args.folder
+def analyze(folder: Path) -> str:
+    """Write the decomposition figure and report for a completed ensemble."""
+    import matplotlib.pyplot as plt
+
+    folder = Path(folder)
     config = json.loads((folder / "config_snapshot.json").read_text())
     edges = np.asarray(config["bin_edges"])
     centers = bin_spectrum(np.arange(config["lmax"] + 1), edges)
@@ -122,8 +118,20 @@ def main() -> None:
     for (low, high), values in zip(bands[:2], unlensed_band):
         report.append(f"- {low}–{high}: mean {values.mean():.3e}, "
                       f"sample SD {values.std(ddof=1):.3e}.")
-    (folder / "saved_sky_analysis.md").write_text("\n".join(report) + "\n")
-    print("\n".join(report))
+    result = "\n".join(report) + "\n"
+    (folder / "saved_sky_analysis.md").write_text(result)
+    return result
+
+
+def main() -> None:
+    import matplotlib
+    matplotlib.use("Agg")
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("folder", nargs="?", type=Path,
+                        default=Path("run_cmb_marked_10_2048"))
+    args = parser.parse_args()
+    print(analyze(args.folder), end="")
 
 
 if __name__ == "__main__":
