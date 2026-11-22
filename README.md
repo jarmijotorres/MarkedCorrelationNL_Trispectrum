@@ -164,6 +164,11 @@ The runner does not import Matplotlib or generate a plot. Use the same
 diagnose to create marked_diagnostic.png and ensemble_vectors.npz.
 The latter contains the complete 43-bin lensed, unlensed, paired marked,
 connected-q, and remainder vectors plus their sample marked covariance.
+It also contains the paired phase-randomized null covariance from matched
+control contrasts. The diagnostic plot shows its single-sky standard
+deviation and the corresponding standard error for the ensemble mean,
+both centered at zero. This null conditions on the observed mode amplitudes;
+it is not a separate no-lensing simulation ensemble.
 With fewer than 44 independent pairs that full-bin covariance is singular;
 retain the vectors but use a smaller prespecified band set for covariance
 based inference. For the decomposition and broad-band report, run

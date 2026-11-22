@@ -128,6 +128,8 @@ def diagnose(config: dict, make_plot: bool = True) -> list[dict]:
     spectra = []
     lensed_spectra = []
     unlensed_spectra = []
+    control_vectors = []
+    edges = np.asarray(config["bin_edges"])
     for index, master_seed in enumerate(config["seeds"]):
         if not complete(config, index):
             continue
@@ -160,6 +162,9 @@ def diagnose(config: dict, make_plot: bool = True) -> list[dict]:
             spectra.append(paired.copy())
             lensed_spectra.append(lensed.copy())
             unlensed_spectra.append(unlensed.copy())
+            control_vectors.append(np.array([
+                bin_spectrum(control, edges) for control in controls
+            ]))
 
     write_progress(config, records)
     if records and make_plot:
@@ -167,11 +172,21 @@ def diagnose(config: dict, make_plot: bool = True) -> list[dict]:
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        edges = np.asarray(config["bin_edges"])
         centers = bin_spectrum(np.arange(config["lmax"] + 1), edges)
         binned = np.array([bin_spectrum(cl, edges) for cl in spectra])
         binned_lensed = np.array([bin_spectrum(cl, edges) for cl in lensed_spectra])
         binned_unlensed = np.array([bin_spectrum(cl, edges) for cl in unlensed_spectra])
+        # Under the joint phase-randomized null, the target pair is an
+        # additional independent draw and the estimator subtracts the mean
+        # of K controls. Thus Cov(target - mean controls) = (1 + 1/K) Cov(G).
+        if config["surrogates"] > 1:
+            paired_null_covariance = (
+                (1 + 1 / config["surrogates"])
+                * np.mean([np.cov(values, rowvar=False)
+                           for values in control_vectors], axis=0)
+            )
+        else:
+            paired_null_covariance = np.full((len(centers), len(centers)), np.nan)
         binned_q = []
         for record in records:
             with np.load(pair_dir(config, record["pair"]) / "unbinned_spectra.npz") as saved:
@@ -184,6 +199,7 @@ def diagnose(config: dict, make_plot: bool = True) -> list[dict]:
             paired_marked=binned, paired_q_component=binned_q,
             paired_remainder=binned - binned_q,
             lensed=binned_lensed, unlensed=binned_unlensed,
+            paired_null_covariance=paired_null_covariance,
             sample_covariance=np.cov(binned, rowvar=False) if len(records) > 1
             else np.full((len(centers), len(centers)), np.nan),
             master_seeds=np.asarray([r["master_seed"] for r in records]),
@@ -211,10 +227,19 @@ def diagnose(config: dict, make_plot: bool = True) -> list[dict]:
                     title=("Phase-control residuals: individual skies"
                            if len(records) <= 30 else
                            "Phase-control residuals: 16–84% sky range"))
-        unlensed_spread = binned_unlensed.std(axis=0, ddof=1) if len(records) > 1 else np.zeros_like(centers)
-        axes[1].fill_between(centers, -unlensed_spread * 1e7,
-                             unlensed_spread * 1e7, color="#24718c",
-                             alpha=0.2, label=r"unlensed spread ($\pm 1$ sample SD)")
+        if config["surrogates"] > 1:
+            null_sd = np.sqrt(np.maximum(np.diag(paired_null_covariance), 0))
+            axes[1].fill_between(
+                centers, -null_sd * 1e7, null_sd * 1e7,
+                color="#24718c", alpha=0.16,
+                label=r"paired phase-null ($\pm 1$ single-sky SD)",
+            )
+            null_mean_sem = null_sd / np.sqrt(len(records))
+            axes[1].fill_between(
+                centers, -null_mean_sem * 1e7, null_mean_sem * 1e7,
+                color="#24718c", alpha=0.28,
+                label=r"paired null mean ($\pm 1$ SEM)",
+            )
         axes[1].plot(centers, binned.mean(axis=0) * 1e7, lw=2.5,
                      color="#202c40", label="paired mean")
         axes[1].set(xlabel="Output multipole L",

@@ -99,6 +99,38 @@ def analyze(folder: Path) -> str:
                    f"- With {len(full)} skies and {len(centers)} bins, the "
                    "many-bin covariance has rank at most the smaller of "
                    f"{len(full) - 1} and {len(centers)}."])
+    vector_file = folder / "ensemble_vectors.npz"
+    if vector_file.exists():
+        with np.load(vector_file) as vectors:
+            if "paired_null_covariance" in vectors:
+                null_covariance = vectors["paired_null_covariance"]
+                report.extend([
+                    "", "## Paired phase-randomized null", "",
+                    "For each sky, matched lensed-minus-unlensed phase-control "
+                    "contrasts estimate the Gaussian-phase covariance. The "
+                    "variance of one target contrast minus the mean of K "
+                    "controls is estimated as (1+1/K) times that covariance. "
+                    "The null-mean SEM divides the single-sky SD by the square "
+                    "root of the number of independent skies. This is a "
+                    "conditional phase null, not an unlensed/no-lensing "
+                    "simulation ensemble.",
+                    "",
+                    "| Output L | Single-sky null SD | Null-mean SEM | "
+                    "Observed paired mean |",
+                    "| --- | ---: | ---: | ---: |",
+                ])
+                for (low, high), observed in zip(bands[:2], paired_bands[:2]):
+                    selected = (edges[:-1] >= low) & (edges[1:] <= high)
+                    weights = (edges[1:][selected] ** 2
+                               - edges[:-1][selected] ** 2).astype(float)
+                    weights /= weights.sum()
+                    covariance = null_covariance[np.ix_(selected, selected)]
+                    null_sd = float(np.sqrt(weights @ covariance @ weights))
+                    report.append(
+                        f"| {low}–{high} | {null_sd:.3e} | "
+                        f"{null_sd / np.sqrt(len(full)):.3e} | "
+                        f"{observed.mean():.3e} |"
+                    )
     bump = paired_bands[3] - 0.5 * (paired_bands[2] + paired_bands[4])
     report.extend(["", "## High-L shape check", "",
                    "Define the 800–1000 band minus the average of 640–800 "
