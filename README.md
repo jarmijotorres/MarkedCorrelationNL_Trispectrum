@@ -174,6 +174,39 @@ Ten controls should take longer because each added control requires another
 marked-field calculation; benchmark a small number of pairs before projecting
 the time for a large ensemble.
 
+### Compute-node notebook
+
+The runner accepts --workers to process independent paired skies in separate
+processes. Each process uses the config's four harmonic-transform threads.
+On a large CPU node, start with eight workers (32 requested threads) and
+monitor memory before increasing that count. Each worker writes its own
+pair directory and run.log; the parent updates progress.json atomically.
+The output directory can live on a scratch filesystem.
+
+In a notebook using the CMB environment's Python kernel, set the repository
+and scratch paths and run:
+
+    import os, sys, subprocess
+    from pathlib import Path
+
+    repo = Path.home() / "MarkedCorrelationNL_Trispectrum"
+    scratch = Path(os.environ["SCRATCH"])
+    output = scratch / "cmb_marked_ensemble"
+    env = os.environ.copy()
+    env["OPENBLAS_NUM_THREADS"] = "1"
+    env["OMP_NUM_THREADS"] = "4"
+    subprocess.run([
+        sys.executable, "-m", "cmb.marked_ensemble_pilot", "run",
+        "--config", "configs/cmb_marked_ensemble.json",
+        "--count", "100", "--workers", "8",
+        "--output-dir", str(output),
+    ], cwd=repo, env=env, check=True)
+
+The same call resumes completed pairs. Use action status with the same count
+and output directory to inspect progress; run action diagnose after completion.
+The notebook cell remains busy until the runner completes. Its own output is
+short; individual simulation logs are in output/pair_XX/run.log.
+
 The benchmark creates paired lensed and unlensed maps from the same Gaussian
 primary, and two phase controls for each map. It computes sign-paired marked
 and connected-four-point bandpowers using cached spherical-harmonic transforms;

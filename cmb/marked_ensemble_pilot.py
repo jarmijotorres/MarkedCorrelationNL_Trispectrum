@@ -9,6 +9,7 @@ import json
 import os
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
@@ -230,51 +231,63 @@ def diagnose(config: dict, make_plot: bool = True) -> list[dict]:
     return records
 
 
-def run(config: dict) -> None:
+def run_pair(config: dict, index: int) -> int:
+    seed = config["seeds"][index]
+    folder = pair_dir(config, index)
+    folder.mkdir(parents=True, exist_ok=True)
+    command = [
+        sys.executable, "-m", "cmb.benchmark_cmb_ensemble",
+        "--nside", str(config["nside"]), "--lmax", str(config["lmax"]),
+        "--nsims", "1", "--surrogates", str(config["surrogates"]),
+        "--seed", str(seed), "--smoothing-degrees", str(config["smoothing_degrees"]),
+        "--temperature-lmin", str(config["temperature_lmin"]),
+        "--spectra", config["spectra"], "--threads", str(config["threads"]),
+        "--bin-edges", *map(str, config["bin_edges"]), "--save-unbinned",
+        "--output-dir", str(folder),
+    ]
+    env = os.environ.copy()
+    env["OPENBLAS_NUM_THREADS"] = "1"
+    env["OMP_NUM_THREADS"] = str(config["threads"])
+    env["MKL_NUM_THREADS"] = "1"
+    env["NUMEXPR_NUM_THREADS"] = "1"
+    print(f"pair {index + 1}/{len(config['seeds'])}: starting seed {seed}", flush=True)
+    with (folder / "run.log").open("w") as log:
+        result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, env=env,
+                                check=False)
+    if result.returncode:
+        raise RuntimeError(f"pair {index + 1} failed; see {folder / 'run.log'}")
+    if not complete(config, index):
+        raise RuntimeError(f"pair {index + 1} exited without complete outputs")
+    return index
+
+
+def run(config: dict, workers: int = 1) -> None:
+    if workers < 1:
+        raise ValueError("--workers must be positive")
     root = Path(config["output_dir"])
     root.mkdir(parents=True, exist_ok=True)
     (root / "config_snapshot.json").write_text(json.dumps(config, indent=2) + "\n")
     records = diagnose(config, make_plot=False)
-    for index, seed in enumerate(config["seeds"]):
-        if complete(config, index):
-            print(f"pair {index + 1}/{len(config['seeds'])}: already complete", flush=True)
-            continue
-        folder = pair_dir(config, index)
-        folder.mkdir(parents=True, exist_ok=True)
-        command = [
-            sys.executable, "-m", "cmb.benchmark_cmb_ensemble",
-            "--nside", str(config["nside"]), "--lmax", str(config["lmax"]),
-            "--nsims", "1", "--surrogates", str(config["surrogates"]),
-            "--seed", str(seed), "--smoothing-degrees", str(config["smoothing_degrees"]),
-            "--temperature-lmin", str(config["temperature_lmin"]),
-            "--spectra", config["spectra"], "--threads", str(config["threads"]),
-            "--bin-edges", *map(str, config["bin_edges"]), "--save-unbinned",
-            "--output-dir", str(folder),
-        ]
-        print(f"pair {index + 1}/{len(config['seeds'])}: starting master seed {seed}", flush=True)
-        env = os.environ.copy()
-        env.setdefault("OPENBLAS_NUM_THREADS", "1")
-        env.setdefault("OMP_NUM_THREADS", str(config["threads"]))
-        with (folder / "run.log").open("w") as log:
-            process = subprocess.Popen(command, stdout=subprocess.PIPE,
-                                       stderr=subprocess.STDOUT, text=True, env=env)
-            assert process.stdout is not None
-            for line in process.stdout:
-                print(line, end="", flush=True)
-                log.write(line)
-                log.flush()
-            code = process.wait()
-        if code:
-            raise SystemExit(f"pair {index + 1} failed with exit code {code}; see {folder / 'run.log'}")
-        if not complete(config, index):
-            raise RuntimeError(f"pair {index + 1} exited without complete outputs")
-        records.append(pair_record(config, index))
-        records.sort(key=lambda item: item["pair"])
-        write_progress(config, records)
-        low, high = config["summary_bands"][0]
-        print(f"completed {len(records)}/{len(config['seeds'])}; "
-              f"paired marked C_L[{low},{high})={records[-1][f'marked_L{low}_{high}']:.3e}",
-              flush=True)
+    pending = [i for i in range(len(config["seeds"])) if not complete(config, i)]
+    print(f"{len(records)} complete; {len(pending)} remaining; "
+          f"{workers} concurrent pair(s)", flush=True)
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(run_pair, config, index): index for index in pending}
+        for future in as_completed(futures):
+            try:
+                index = future.result()
+            except Exception:
+                for remaining in futures:
+                    remaining.cancel()
+                raise
+            record = pair_record(config, index)
+            records.append(record)
+            records.sort(key=lambda item: item["pair"])
+            write_progress(config, records)
+            low, high = config["summary_bands"][0]
+            print(f"completed {len(records)}/{len(config['seeds'])}: "
+                  f"pair {index + 1}, marked C_L[{low},{high})="
+                  f"{record[f'marked_L{low}_{high}']:.3e}", flush=True)
 
 
 def main() -> None:
@@ -285,10 +298,12 @@ def main() -> None:
                         help="number of pairs; generated seeds keep the same prefix when extended")
     parser.add_argument("--output-dir", type=Path,
                         help="override output directory, e.g. a cluster scratch path")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="number of paired skies to process concurrently")
     args = parser.parse_args()
     config = load_config(args.config.resolve(), args.count, args.output_dir)
     if args.action == "run":
-        run(config)
+        run(config, args.workers)
     elif args.action == "status":
         root = Path(config["output_dir"])
         done = sum(complete(config, i) for i in range(len(config["seeds"])))
