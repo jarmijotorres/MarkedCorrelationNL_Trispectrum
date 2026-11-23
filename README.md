@@ -183,8 +183,8 @@ the time for a large ensemble.
 
 The runner accepts --workers to process independent paired skies in separate
 processes. Each process uses the config's four harmonic-transform threads.
-On a large CPU node, start with eight workers (32 requested threads) and
-monitor memory before increasing that count. Each worker writes its own
+On the 256-CPU NERSC node used for the CMB ensembles, 64 workers with four
+threads each request all 256 CPUs. Each worker writes its own
 pair directory and run.log; the parent updates progress.json atomically.
 The output directory can live on a scratch filesystem.
 
@@ -244,3 +244,41 @@ and the largest realized phase-control power mismatch). The ten-pair local
 run took about 2.3 seconds, or 0.23 seconds per independent pair, at this
 resolution. Rebenchmark if the spectrum range, resolution, or number of
 phase controls changes.
+
+### Linear-mark and Ebina follow-up
+
+The main ensemble saves spectra but discards maps, so the new linear-mark
+statistics cannot be reconstructed from `ensemble_vectors.npz` alone.
+`cmb.linear_mark_followup` deterministically replays each completed pair from
+its saved seed and input spectra, including the ten matched phase controls.
+It writes `linear_mark_followup.npz` beside each original pair without changing
+the original outputs. The run is resumable.
+
+For `t` the filtered, unit-variance temperature field, `s` its 2-arcmin
+smoothed version, and `u=<ts>`, the linear mark is `m=1+s`. The script records:
+
+- The sign-paired linear-mark auto-spectrum, from
+  `delta_m=(t+s+ts-u)/(1+u)` for the positive sign, with each sign partner
+  normalized by its own realized mean. The lensed and unlensed spectra each
+  have their own phase-control mean subtracted.
+- The unpaired Ebina cubic cross-term `C_L[t,ts-<ts>]/<(1+t)(1+s)>`, which is
+  the unmarked--marked cross-spectrum after its two-point terms are removed.
+  It must remain unpaired for the ensemble bispectrum-null check: sign
+  averaging would cancel this odd statistic by construction. The script
+  records raw and phase-control-subtracted versions for both map classes.
+
+In the NERSC notebook, after the main 1000-pair run finishes:
+
+```python
+from pathlib import Path
+from cmb.linear_mark_followup import load_config, run, diagnose
+
+config = load_config(Path("/global/homes/j/jatorres/MarkedCorrelationNL_Trispectrum/configs/cmb_marked_log8_1000.json"))
+run(config, workers=64)
+diagnose(config)
+```
+
+This second pass recreates maps and phase controls, so it requires significant
+compute time. Its aggregate output is `linear_mark_followup_vectors.npz` in
+the ensemble directory. The expected bispectrum null concerns the **ensemble
+mean** of the unpaired Ebina term; individual skies need not have zero values.
