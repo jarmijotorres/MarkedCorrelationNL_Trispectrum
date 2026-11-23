@@ -16,6 +16,7 @@ import numpy as np
 def run(vector_path: Path, output_path: Path) -> None:
     with np.load(vector_path) as data:
         centers = data["centers"]
+        edges = data["bin_edges"]
         unlensed = data["unlensed"]
         lensed = data["lensed"]
     if unlensed.shape != lensed.shape or unlensed.shape[1] != centers.size:
@@ -56,9 +57,9 @@ def run(vector_path: Path, output_path: Path) -> None:
     threshold = np.percentile(null_scores, 95)
 
     fig, (ax0, ax1) = plt.subplots(1, 2, figsize=(12, 4.8), constrained_layout=True)
-    im = ax0.imshow(correlation, origin="lower", cmap="coolwarm", vmin=-1, vmax=1,
-                    extent=(centers[0], centers[-1], centers[0], centers[-1]), aspect="auto")
-    ax0.set_title("Unlensed null: 43-bin correlation matrix")
+    im = ax0.pcolormesh(edges, edges, correlation, cmap="coolwarm", vmin=-1, vmax=1,
+                        shading="flat")
+    ax0.set_title(f"Unlensed null: {d}-bin correlation matrix")
     ax0.set_xlabel("Marked-field multipole $L$")
     ax0.set_ylabel("Marked-field multipole $L$")
     fig.colorbar(im, ax=ax0, label="Correlation")
