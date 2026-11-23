@@ -1,0 +1,14 @@
+{
+  "output_dir": "/pscratch/sd/j/jatorres/data/CMB/cmb_marked_ensemble/log8_validation_100",
+  "nside": 2048,
+  "lmax": 3000,
+  "temperature_lmin": 600,
+  "smoothing_degrees": 0.03333333333333333,
+  "spectra": "camb",
+  "surrogates": 10,
+  "threads": 4,
+  "seed_base": 991337,
+  "count": 100,
+  "bin_edges": [40, 80, 120, 180, 260, 380, 560, 800, 1200],
+  "summary_bands": [[100, 600], [600, 1200]]
+}
